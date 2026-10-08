@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CarTube</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0e1013; --panel: #181b20; --raised: #22262d; --border: #30363f;
+      --text: #eef1f5; --dim: #9aa3b0; --accent: #ff4e45; --accent-bg: #3a1f1e;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+      background: var(--bg); color: var(--text);
+      font: 18px/1.4 system-ui, "Segoe UI", Roboto, sans-serif;
+    }
+    button, input { font: inherit; color: inherit; }
+    button {
+      min-height: 52px; padding: 0 20px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--raised); cursor: pointer;
+    }
+    button:disabled { opacity: 0.45; cursor: default; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    input[type="search"], input[type="text"] {
+      flex: 1; min-width: 0; min-height: 52px; padding: 0 16px;
+      border: 1px solid var(--border); border-radius: 10px; background: var(--panel);
+    }
+    button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    a { color: var(--accent); }
+
+    header {
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+    }
+    h1 { margin: 0; font-size: 22px; }
+    h1 span { color: var(--accent); }
+    #search-form { display: flex; gap: 12px; flex: 1 1 420px; }
+    .toggle {
+      display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 16px;
+      border: 1px solid var(--border); border-radius: 10px; background: var(--raised);
+      cursor: pointer; user-select: none;
+    }
+    .toggle input { width: 22px; height: 22px; accent-color: var(--accent); }
+
+    #settings {
+      margin: 16px 16px 0; padding: 4px 20px 16px;
+      border: 1px solid var(--border); border-radius: 12px; background: var(--panel);
+    }
+    #settings h2 { font-size: 20px; }
+    #settings li { margin-bottom: 6px; }
+    #key-form { display: flex; flex-wrap: wrap; gap: 12px; }
+    code { padding: 1px 6px; border-radius: 4px; background: var(--raised); }
+
+    main { flex: 1; display: grid; gap: 16px; padding: 16px; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 1000px) {
+      body { height: 100vh; }
+      main { min-height: 0; grid-template-columns: minmax(0, 1fr) 420px; grid-template-rows: minmax(0, 1fr); }
+      #side { min-height: 0; }
+      #list { overflow-y: auto; }
+    }
+
+    /* 16:9 box that also shrinks to fit the screen height, so the controls stay visible. */
+    #player-wrap {
+      position: relative; margin: 0 auto; overflow: hidden; border-radius: 12px; background: #000;
+      width: min(100%, max(320px, calc((100vh - 250px) * 16 / 9)));
+    }
+    #player-wrap::before { content: ""; display: block; padding-top: 56.25%; }
+    #player-wrap iframe, #player, #placeholder { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+    #placeholder {
+      display: flex; align-items: center; justify-content: center; padding: 24px;
+      text-align: center; color: var(--dim); background: var(--panel);
+    }
+    #controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 12px; }
+    #play-btn { min-width: 120px; }
+    #now-playing { flex: 1 1 240px; min-width: 0; }
+    #now-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #now-channel { color: var(--dim); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .msg { margin: 10px 2px 0; color: var(--dim); }
+    .hint { margin: 10px 2px 0; color: var(--dim); font-size: 15px; }
+
+    #side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    .tabs { display: flex; gap: 8px; }
+    .tabs button { flex: 1; }
+    .tabs button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-bg); }
+    #list { display: flex; flex-direction: column; gap: 8px; }
+    .card { display: flex; gap: 12px; align-items: center; width: 100%; padding: 8px; text-align: left; background: var(--panel); }
+    .card.active { border-color: var(--accent); background: var(--accent-bg); }
+    .card img { flex: none; width: 144px; height: 81px; object-fit: cover; border-radius: 6px; background: #000; }
+    .card-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .card-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 16px; }
+    .card-channel { color: var(--dim); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .live-badge {
+      align-self: flex-start; padding: 1px 8px; border-radius: 4px;
+      background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; letter-spacing: 0.5px;
+    }
+
+    footer { padding: 8px 16px 12px; color: var(--dim); font-size: 14px; text-align: center; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Car<span>Tube</span></h1>
+  <form id="search-form">
+    <input id="query" type="search" placeholder="Search YouTube, or paste a video link"
+           aria-label="Search YouTube, or paste a video link" autocomplete="off" enterkeyhint="search">
+    <button type="submit" class="primary">Search</button>
+  </form>
+  <label class="toggle"><input type="checkbox" id="live-only"> Live only</label>
+  <button type="button" id="settings-btn" aria-expanded="false" aria-controls="settings">Settings</button>
+</header>
+
+<section id="settings" hidden>
+  <h2>Search setup</h2>
+  <p>Search uses YouTube's official API, which needs a free API key from your own Google account.
+     Playing a pasted video link works without one.</p>
+  <ol>
+    <li>Open <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">YouTube Data API v3</a>
+        in Google Cloud, create a project if asked, and choose <strong>Enable</strong>.</li>
+    <li>Under <strong>Credentials</strong>, choose <strong>Create credentials</strong>, then <strong>API key</strong>.</li>
+    <li>Restrict the key. Application restrictions: <strong>Websites</strong>, and add <code id="site-pattern"></code>.
+        API restrictions: <strong>YouTube Data API v3</strong>.</li>
+    <li>Paste the key here and save.</li>
+  </ol>
+  <form id="key-form">
+    <input id="key-input" type="text" placeholder="API key" aria-label="API key"
+           autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button type="submit" class="primary">Save</button>
+    <button type="button" id="key-remove">Remove</button>
+  </form>
+  <p class="msg" id="key-status" role="status"></p>
+  <p class="hint">The key is stored only in this browser. The free quota allows about 100 searches a day.</p>
+</section>
+
+<main>
+  <section id="stage">
+    <div id="player-wrap">
+      <div id="player"></div>
+      <div id="placeholder">Search for something or paste a YouTube link to start.</div>
+    </div>
+    <div id="controls">
+      <button type="button" id="play-btn" class="primary" disabled>Play</button>
+      <label class="toggle"><input type="checkbox" id="keep-playing" checked> Keep playing</label>
+      <div id="now-playing">
+        <div id="now-title"></div>
+        <div id="now-channel"></div>
+      </div>
+    </div>
+    <p class="hint">With Keep playing on, playback resumes by itself if something pauses it. Use the Pause button here to stop.</p>
+    <p class="msg" id="player-msg" role="status"></p>
+  </section>
+
+  <section id="side">
+    <div class="tabs">
+      <button type="button" id="tab-results" aria-pressed="false">Results</button>
+      <button type="button" id="tab-recent" aria-pressed="true">Recent</button>
+    </div>
+    <p class="msg" id="list-msg" role="status"></p>
+    <div id="list"></div>
+  </section>
+</main>
+
+<footer>For passengers only. Keep your eyes on the road.</footer>
+
+<script>
+// Pure helpers with no DOM access, so test/helpers.test.js can run them in Node.
+const SEARCH_ENDPOINT = 'https://www.googleapis.com/youtube/v3/search';
+const MAX_RECENT = 12;
+
+// Returns the video ID if the text is a YouTube link or a bare ID, otherwise null.
+function parseVideoId(text) {
+  const value = text.trim();
+  if (/youtu\.?be/i.test(value)) {
+    const match = value.match(/(?:[?&]v=|youtu\.be\/|\/(?:embed|live|shorts)\/)([\w-]{11})(?![\w-])/);
+    return match ? match[1] : null;
+  }
+  // A bare ID is 11 URL-safe characters. Plain words of that length ("Documentary") are
+  // searches, so an ID must contain a digit, dash, underscore or a capital after the first letter.
+  if (/^[\w-]{11}$/.test(value) && (/[\d_-]/.test(value) || /[A-Z]/.test(value.slice(1)))) return value;
+  return null;
+}
+
+function looksLikeLink(text) {
+  return /^(https?:\/\/|www\.)/i.test(text.trim());
+}
+
+// The API key travels in a request header, not in this URL.
+function buildSearchUrl(query, liveOnly) {
+  const params = new URLSearchParams({
+    part: 'snippet', type: 'video', videoEmbeddable: 'true', maxResults: '24', q: query,
+  });
+  if (liveOnly) params.set('eventType', 'live');
+  return `${SEARCH_ENDPOINT}?${params}`;
+}
+
+// The API returns titles with HTML entities (&amp;, &#39;, ...).
+function decodeEntities(text) {
+  const named = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+  return text.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (whole, code) => {
+    const lower = code.toLowerCase();
+    if (lower[0] !== '#') return named[lower];
+    const point = lower[1] === 'x' ? parseInt(lower.slice(2), 16) : parseInt(lower.slice(1), 10);
+    return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : whole;
+  });
+}
+
+function mapSearchItems(data) {
+  return (data.items || [])
+    .filter(item => item.id && item.id.videoId)
+    .map(item => {
+      const snippet = item.snippet || {};
+      return {
+        id: item.id.videoId,
+        title: decodeEntities(snippet.title || 'Untitled'),
+        channel: decodeEntities(snippet.channelTitle || ''),
+        live: snippet.liveBroadcastContent === 'live',
+      };
+    });
+}
+
+function thumbUrl(id) {
+  return `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
+}
+
+// Turns a failed API response into a sentence the user can act on.
+function describeApiError(status, data) {
+  const error = (data && data.error) || {};
+  const reason = (error.errors && error.errors[0] && error.errors[0].reason) || '';
+  const message = String(error.message || '').replace(/<[^>]*>/g, '');
+  if (/quota/i.test(reason) || /quota/i.test(message)) {
+    return "Today's free search quota is used up. It resets at midnight Pacific time. Pasting a video link still works.";
+  }
+  if (/API key not valid/i.test(message)) return 'YouTube rejected the API key. Check it in Settings.';
+  if (/referr?er/i.test(message)) {
+    return "This API key is restricted to another website. Add this site's address to the key's allowed websites in Google Cloud.";
+  }
+  if (reason === 'accessNotConfigured' || /has not been used|is disabled/i.test(message)) {
+    return "The YouTube Data API v3 is not enabled for this key's Google Cloud project.";
+  }
+  return `YouTube search failed (HTTP ${status})${message ? ': ' + message : '.'}`;
+}
+
+// Newest first, no duplicates, capped.
+function addRecent(recent, video) {
+  return [video, ...recent.filter(item => item.id !== video.id)].slice(0, MAX_RECENT);
+}
+</script>
+
+<script>
+// Page behaviour: search, playback and the keep-playing logic.
+const $ = id => document.getElementById(id);
+const queryEl = $('query'), liveEl = $('live-only'), keepEl = $('keep-playing');
+const listEl = $('list'), listMsgEl = $('list-msg'), playerMsgEl = $('player-msg');
+const playBtn = $('play-btn'), settingsEl = $('settings'), settingsBtn = $('settings-btn');
+
+// localStorage can throw (private mode, storage disabled); the page must still work without it.
+const store = {
+  get(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw === null ? fallback : JSON.parse(raw);
+    } catch { return fallback; }
+  },
+  set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* not persisted */ } },
+  remove(key) { try { localStorage.removeItem(key); } catch { /* nothing to remove */ } },
+};
+
+function loadRecent() {
+  const saved = store.get('cartube.recent', []);
+  return (Array.isArray(saved) ? saved : [])
+    .filter(item => item && /^[\w-]{11}$/.test(item.id))
+    .map(item => ({ id: item.id, title: String(item.title || 'Untitled'), channel: String(item.channel || '') }));
+}
+
+let apiKey = String(store.get('cartube.apiKey', '') || '');
+let recent = loadRecent();
+let results = [];
+let view = 'recent';          // which list is on screen: 'results' or 'recent'
+let queue = [];               // the list the current video was started from, for auto-advance
+let queueIndex = -1;
+let current = recent[0] || null;
+let wantPlaying = false;      // what the user asked for, as opposed to what the player is doing
+let player = null, playerReady = false, pendingId = null;
+let wakeLock = null, resumeTimer = null, searchSeq = 0;
+
+// One-time setup shortcut: open the page as .../#key=YOUR_KEY and the key is saved.
+const hashKey = new URLSearchParams(location.hash.slice(1)).get('key');
+if (hashKey) {
+  apiKey = hashKey.trim();
+  store.set('cartube.apiKey', apiKey);
+  history.replaceState(null, '', location.pathname + location.search);
+}
+
+// ── Lists ──
+function renderList() {
+  const items = view === 'results' ? results : recent;
+  $('tab-results').setAttribute('aria-pressed', String(view === 'results'));
+  $('tab-recent').setAttribute('aria-pressed', String(view === 'recent'));
+  listEl.replaceChildren(...items.map((video, index) => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'card' + (current && current.id === video.id ? ' active' : '');
+    const img = document.createElement('img');
+    img.src = thumbUrl(video.id);
+    img.alt = '';
+    img.loading = 'lazy';
+    const text = document.createElement('span');
+    text.className = 'card-text';
+    if (video.live) {
+      const badge = document.createElement('span');
+      badge.className = 'live-badge';
+      badge.textContent = 'LIVE';
+      text.append(badge);
+    }
+    const title = document.createElement('span');
+    title.className = 'card-title';
+    title.textContent = video.title;
+    const channel = document.createElement('span');
+    channel.className = 'card-channel';
+    channel.textContent = video.channel;
+    text.append(title, channel);
+    card.append(img, text);
+    card.addEventListener('click', () => play(video, items, index));
+    return card;
+  }));
+}
+
+function showList(name, message) {
+  view = name;
+  renderList();
+  const empty = name === 'results'
+    ? 'Search results show here.'
+    : 'Nothing played yet. Search above or paste a YouTube link.';
+  const items = name === 'results' ? results : recent;
+  listMsgEl.textContent = message || (items.length ? '' : empty);
+}
+
+// ── Search ──
+async function search(query) {
+  const seq = ++searchSeq;
+  results = [];
+  showList('results', 'Searching...');
+  let response, data;
+  try {
+    response = await fetch(buildSearchUrl(query, liveEl.checked), { headers: { 'X-Goog-Api-Key': apiKey } });
+    data = await response.json();
+  } catch {
+    if (seq === searchSeq) showList('results', 'Could not reach YouTube. Check the connection and try again.');
+    return;
+  }
+  if (seq !== searchSeq) return;   // a newer search replaced this one
+  if (!response.ok) {
+    showList('results', describeApiError(response.status, data));
+    return;
+  }
+  results = mapSearchItems(data);
+  showList('results', results.length ? '' : `No results for "${query}".`);
+}
+
+$('search-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const text = queryEl.value.trim();
+  if (!text) return;
+  queryEl.blur();   // dismisses the on-screen keyboard
+
+  const id = parseVideoId(text);
+  if (id) {
+    queryEl.value = '';
+    play({ id, title: 'Video ' + id, channel: '', untitled: true });
+  } else if (looksLikeLink(text)) {
+    showList(view, 'That link does not point to a YouTube video.');
+  } else if (!apiKey) {
+    setSettingsOpen(true);
+    showList('results', 'Search needs a free YouTube API key. See Search setup above. Pasting a video link works without one.');
+  } else {
+    search(text);
+  }
+});
+
+$('tab-results').addEventListener('click', () => showList('results'));
+$('tab-recent').addEventListener('click', () => showList('recent'));
+
+// ── Playback ──
+function showNowPlaying() {
+  $('now-title').textContent = current ? current.title : '';
+  $('now-channel').textContent = current ? current.channel : '';
+  $('placeholder').hidden = Boolean(current);
+  playBtn.disabled = !current;
+}
+
+function remember(video) {
+  recent = addRecent(recent, { id: video.id, title: video.title, channel: video.channel });
+  store.set('cartube.recent', recent);
+}
+
+function play(video, list, index) {
+  current = video;
+  queue = list ? list.slice() : [video];
+  queueIndex = list ? index : 0;
+  playerMsgEl.textContent = '';
+  remember(video);
+  showNowPlaying();
+  renderList();
+  setWantPlaying(true);
+  if (playerReady) player.loadVideoById(video.id);
+  else pendingId = video.id;   // starts as soon as the player has loaded
+}
+
+function playNext() {
+  if (queueIndex + 1 < queue.length) play(queue[queueIndex + 1], queue, queueIndex + 1);
+  else setWantPlaying(false);
+}
+
+function setWantPlaying(value) {
+  wantPlaying = value;
+  playBtn.textContent = value ? 'Pause' : 'Play';
+  if (value) grabWakeLock();
+  else releaseWakeLock();
+}
+
+playBtn.addEventListener('click', () => {
+  if (!current) return;
+  if (!playerReady) {
+    // The player is still loading: remember the choice and start once it is ready.
+    const start = !wantPlaying;
+    pendingId = start ? current.id : null;
+    setWantPlaying(start);
+    return;
+  }
+  if (wantPlaying) {
+    setWantPlaying(false);
+    player.pauseVideo();
+  } else {
+    setWantPlaying(true);
+    player.playVideo();
+  }
+});
+
+// A pasted link has no title until the player has loaded the video.
+function fillInTitle() {
+  const data = player.getVideoData ? player.getVideoData() : null;
+  if (!current || !current.untitled || !data || data.video_id !== current.id || !data.title) return;
+  current = { id: current.id, title: data.title, channel: data.author || '' };
+  remember(current);
+  showNowPlaying();
+  renderList();
+}
+
+function onPlayerReady() {
+  playerReady = true;
+  if (pendingId) player.loadVideoById(pendingId);
+  else if (current) player.cueVideoById(current.id);
+  pendingId = null;
+}
+
+function onPlayerStateChange(event) {
+  const state = YT.PlayerState;
+  if (event.data === state.PLAYING) {
+    fillInTitle();
+    setWantPlaying(true);
+  } else if (event.data === state.PAUSED) {
+    // With Keep playing on, only the Pause button on this page counts as the user pausing.
+    if (keepEl.checked && wantPlaying) scheduleResume();
+    else setWantPlaying(false);
+  } else if (event.data === state.ENDED) {
+    playNext();
+  }
+}
+
+function onPlayerError(event) {
+  const messages = {
+    2: 'That video ID is not valid.',
+    5: 'This video cannot be played in this browser.',
+    100: 'This video was removed or is private.',
+    101: 'The owner does not allow this video to play outside YouTube.',
+    150: 'The owner does not allow this video to play outside YouTube.',
+  };
+  playerMsgEl.textContent = messages[event.data] || 'YouTube could not play this video.';
+  setWantPlaying(false);
+}
+
+// ── Keep playing ──
+// Asks the player to resume, retrying for about three seconds in case the pause arrives late.
+function scheduleResume() {
+  clearTimeout(resumeTimer);
+  let tries = 0;
+  const attempt = () => {
+    if (!keepEl.checked || !wantPlaying || !playerReady) return;
+    if (player.getPlayerState() === YT.PlayerState.PLAYING) return;
+    player.playVideo();
+    if (++tries < 12) resumeTimer = setTimeout(attempt, 250);
+  };
+  resumeTimer = setTimeout(attempt, 100);
+}
+
+function onSystemEvent() {
+  if (keepEl.checked && wantPlaying) scheduleResume();
+}
+
+document.addEventListener('visibilitychange', () => {
+  onSystemEvent();
+  if (!document.hidden && wantPlaying) grabWakeLock();   // the lock is dropped while hidden
+});
+document.addEventListener('freeze', onSystemEvent);
+document.addEventListener('resume', onSystemEvent);
+
+async function grabWakeLock() {
+  if (wakeLock || !('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch { /* not allowed right now, for example while the page is hidden */ }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) wakeLock.release().catch(() => {});
+}
+
+keepEl.checked = store.get('cartube.keepPlaying', true) !== false;
+keepEl.addEventListener('change', () => store.set('cartube.keepPlaying', keepEl.checked));
+
+// ── Settings ──
+function setSettingsOpen(open) {
+  settingsEl.hidden = !open;
+  settingsBtn.setAttribute('aria-expanded', String(open));
+}
+
+function showKeyStatus() {
+  $('key-status').textContent = apiKey ? `A key is saved (ends in ${apiKey.slice(-4)}).` : 'No key saved yet.';
+}
+
+settingsBtn.addEventListener('click', () => setSettingsOpen(settingsEl.hidden));
+
+$('key-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const value = $('key-input').value.trim();
+  if (!value) return;
+  apiKey = value;
+  store.set('cartube.apiKey', apiKey);
+  $('key-input').value = '';
+  showKeyStatus();
+});
+
+$('key-remove').addEventListener('click', () => {
+  apiKey = '';
+  store.remove('cartube.apiKey');
+  showKeyStatus();
+});
+
+// ── Start ──
+$('site-pattern').textContent = location.origin + '/*';
+showKeyStatus();
+showNowPlaying();
+showList('recent');
+
+// YouTube's player script calls this global once it has loaded.
+window.onYouTubeIframeAPIReady = () => {
+  player = new YT.Player('player', {
+    width: '100%',
+    height: '100%',
+    playerVars: { playsinline: 1, rel: 0 },
+    events: { onReady: onPlayerReady, onStateChange: onPlayerStateChange, onError: onPlayerError },
+  });
+};
+const playerScript = document.createElement('script');
+playerScript.src = 'https://www.youtube.com/iframe_api';
+playerScript.onerror = () => { playerMsgEl.textContent = 'The YouTube player could not load. Check the connection and reload.'; };
+document.head.append(playerScript);
+</script>
+
+</body>
+</html>
