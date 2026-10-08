@@ -72,6 +72,7 @@
       body { height: 100vh; }
       main { min-height: 0; grid-template-columns: minmax(0, 1fr) clamp(380px, 34vw, 520px); grid-template-rows: minmax(0, 1fr); }
       #side { min-height: 0; }
+      #stage { min-height: 0; overflow-y: auto; }   /* fallback on very short screens */
       /* The list scrolls on its own here, so the player and controls stay put. */
       #list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 4px; }
     }
@@ -79,7 +80,7 @@
     /* 16:9 box that also shrinks to fit the screen height, so the controls stay visible. */
     #player-wrap {
       position: relative; margin: 0 auto; overflow: hidden; border-radius: 12px; background: #000;
-      width: min(100%, max(320px, calc((100vh - 250px) * 16 / 9)));
+      width: min(100%, max(320px, calc((100vh - 320px) * 16 / 9)));
     }
     #player-wrap::before { content: ""; display: block; padding-top: 56.25%; }
     #player-wrap iframe, #player, #placeholder { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
@@ -93,6 +94,16 @@
     #placeholder p:empty { display: none; }
     #controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 12px; }
     #play-btn { min-width: 120px; }
+    /* Volume controls sized for a finger; YouTube's own slider only appears on mouse hover. */
+    #volume { display: flex; align-items: center; gap: 8px; }
+    #mute-btn { min-width: 104px; padding: 0 12px; }
+    #vol-down, #vol-up { width: 56px; padding: 0; font-size: 28px; line-height: 1; }
+    #vol-label { min-width: 3.6em; color: var(--dim); font-size: 15px; }
+    #vol-slider { -webkit-appearance: none; appearance: none; width: 180px; height: 52px; margin: 0; background: transparent; cursor: pointer; }
+    #vol-slider::-webkit-slider-runnable-track { height: 12px; border-radius: 6px; background: var(--border); }
+    #vol-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 36px; height: 36px; margin-top: -12px; border-radius: 50%; background: var(--accent); }
+    #vol-slider::-moz-range-track { height: 12px; border-radius: 6px; background: var(--border); }
+    #vol-slider::-moz-range-thumb { width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--accent); }
     #now-playing { flex: 1 1 240px; min-width: 0; }
     #now-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #now-channel { color: var(--dim); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -180,6 +191,13 @@
     <div id="controls">
       <button type="button" id="play-btn" class="primary" disabled>Play</button>
       <label class="toggle"><input type="checkbox" id="keep-playing" checked> Keep playing</label>
+      <div id="volume" role="group" aria-label="Volume">
+        <button type="button" id="mute-btn" aria-pressed="false">Mute</button>
+        <button type="button" id="vol-down" aria-label="Volume down">&minus;</button>
+        <input type="range" id="vol-slider" min="0" max="100" step="5" value="100" aria-label="Volume">
+        <button type="button" id="vol-up" aria-label="Volume up">+</button>
+        <span id="vol-label">100%</span>
+      </div>
       <div id="now-playing">
         <div id="now-title"></div>
         <div id="now-channel"></div>
@@ -308,6 +326,12 @@ function describeApiError(status, data) {
     return "The YouTube Data API v3 is not enabled for this key's Google Cloud project.";
   }
   return `YouTube search failed (HTTP ${status})${message ? ': ' + message : '.'}`;
+}
+
+// The next multiple of ten above (direction 1) or below (-1) the current volume, within 0 to 100.
+function stepVolume(current, direction) {
+  const next = direction > 0 ? Math.floor(current / 10) * 10 + 10 : Math.ceil(current / 10) * 10 - 10;
+  return Math.max(0, Math.min(100, next));
 }
 
 // Newest first, no duplicates, capped.
@@ -548,6 +572,11 @@ function onPlayerReady() {
   if (pendingId) player.loadVideoById(pendingId);
   else if (current) player.cueVideoById(current.id);
   pendingId = null;
+  // Apply the volume chosen on this page before; otherwise show what the player already has.
+  if (volumeChosen) player.setVolume(volume);
+  else volume = Math.round(player.getVolume());
+  muted = player.isMuted();
+  showVolume();
 }
 
 function onPlayerStateChange(event) {
@@ -615,6 +644,57 @@ function releaseWakeLock() {
 
 keepEl.checked = store.get('cartube.keepPlaying', true) !== false;
 keepEl.addEventListener('change', () => store.set('cartube.keepPlaying', keepEl.checked));
+
+// ── Volume ──
+// The player applies volume changes a moment after they are asked for, so the page keeps its
+// own copy and follows the player's change events (which also fire for YouTube's own control).
+const savedVolume = store.get('cartube.volume', null);
+const volumeChosen = typeof savedVolume === 'number';
+let volume = volumeChosen ? Math.max(0, Math.min(100, Math.round(savedVolume))) : 100;
+let muted = false;
+let volumeTouchedAt = 0;
+
+function showVolume() {
+  $('vol-slider').value = volume;
+  $('vol-label').textContent = muted ? 'Muted' : volume + '%';
+  $('mute-btn').textContent = muted ? 'Unmute' : 'Mute';
+  $('mute-btn').setAttribute('aria-pressed', String(muted));
+}
+
+function setVolume(value) {
+  volume = Math.max(0, Math.min(100, Math.round(value)));
+  muted = false;   // changing the level also unmutes
+  volumeTouchedAt = Date.now();
+  store.set('cartube.volume', volume);
+  if (playerReady) {
+    player.unMute();
+    player.setVolume(volume);
+  }
+  showVolume();
+}
+
+function onPlayerVolumeChange(event) {
+  // Late echoes of the page's own changes would make the slider jump back while it is dragged.
+  if (Date.now() - volumeTouchedAt < 1000) return;
+  const data = event.data || {};
+  if (typeof data.volume === 'number') volume = Math.round(data.volume);
+  if (typeof data.muted === 'boolean') muted = data.muted;
+  showVolume();
+}
+
+$('vol-slider').addEventListener('input', event => setVolume(Number(event.target.value)));
+$('vol-down').addEventListener('click', () => setVolume(stepVolume(volume, -1)));
+$('vol-up').addEventListener('click', () => setVolume(stepVolume(volume, 1)));
+$('mute-btn').addEventListener('click', () => {
+  muted = !muted;
+  volumeTouchedAt = Date.now();
+  if (playerReady) {
+    if (muted) player.mute();
+    else player.unMute();
+  }
+  showVolume();
+});
+showVolume();
 
 // ── Settings ──
 function setSettingsOpen(open) {
@@ -698,7 +778,10 @@ window.onYouTubeIframeAPIReady = () => {
     width: '100%',
     height: '100%',
     playerVars: { playsinline: 1, rel: 0 },
-    events: { onReady: onPlayerReady, onStateChange: onPlayerStateChange, onError: onPlayerError },
+    events: {
+      onReady: onPlayerReady, onStateChange: onPlayerStateChange, onError: onPlayerError,
+      onVolumeChange: onPlayerVolumeChange,
+    },
   });
 };
 const playerScript = document.createElement('script');

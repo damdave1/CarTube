@@ -8,6 +8,7 @@ A single-page YouTube player for an in-car browser: one box to search YouTube or
 - **Search:** type words and press Search. This needs a free API key, see below.
 - **Live only:** limits a search to streams that are live right now.
 - **Recent:** the last 12 videos played on this device.
+- **Volume:** Mute, minus, plus and a slider under the player, sized for a touch screen. YouTube's own volume slider only appears on mouse hover. The level is remembered on this device.
 - **Keep playing:** when on, playback resumes by itself if something pauses it, and the Pause button on the page is the way to stop. When off, pausing in the YouTube player works as usual.
 
 When a video ends, the next one in the list starts. When nothing is playing, the player shows `logo.webp` (also the browser tab icon); tap it to start the loaded video. Replace that file to change the logo.

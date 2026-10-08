@@ -12,7 +12,7 @@ vm.runInContext(scripts[0], ctx);
 scripts.forEach((code, index) => new vm.Script(code, { filename: `inline-script-${index}` }));   // syntax check only
 
 const { parseVideoId, looksLikeLink, buildSearchUrl, decodeEntities, mapSearchItems, describeApiError, addRecent } = ctx;
-const { cleanKey, keyShapeHint, isInvalidKeyError, charKind } = ctx;
+const { cleanKey, keyShapeHint, isInvalidKeyError, charKind, stepVolume } = ctx;
 // Built at run time so no key-shaped literal sits in the repository.
 const shapedKey = 'AIza' + 'x'.repeat(35);
 const plain = value => JSON.parse(JSON.stringify(value));   // drops the vm realm so deepEqual compares values
@@ -104,6 +104,10 @@ const tests = {
     assert.equal(isInvalidKeyError({ error: { message: 'API key not valid. Please pass a valid API key.' } }), true);
     assert.equal(isInvalidKeyError({ error: { message: 'Requests from referer https://example.com/ are blocked.' } }), false);
     assert.equal(isInvalidKeyError(null), false);
+  },
+  'stepVolume moves to the next ten and stays within 0 to 100'() {
+    assert.deepEqual([[50, 1], [50, -1], [37, 1], [37, -1], [95, 1], [100, 1], [5, -1], [0, -1]].map(([v, d]) => stepVolume(v, d)),
+      [60, 40, 40, 30, 100, 100, 0, 0]);
   },
   'addRecent puts the newest first, without duplicates, capped at 12'() {
     const list = Array.from({ length: 12 }, (_, i) => ({ id: 'id' + i }));
