@@ -53,6 +53,9 @@
     #settings h2 { font-size: 20px; }
     #settings li { margin-bottom: 6px; }
     #key-form { display: flex; flex-wrap: wrap; gap: 12px; }
+    /* A monospace face keeps 0/O and 1/l/I apart when checking a typed key. */
+    #key-input, #key-saved { font-family: ui-monospace, Consolas, "Courier New", monospace; letter-spacing: 0.5px; }
+    #key-saved { display: inline-block; margin: 8px 2px 0; padding: 6px 10px; font-size: 20px; word-break: break-all; }
     code { padding: 1px 6px; border-radius: 4px; background: var(--raised); }
 
     main { flex: 1; display: grid; gap: 16px; padding: 16px; grid-template-columns: minmax(0, 1fr); }
@@ -147,6 +150,8 @@
     <button type="button" id="key-remove">Remove</button>
   </form>
   <p class="msg" id="key-status" role="status"></p>
+  <code id="key-saved" hidden></code>
+  <p class="msg" id="key-check" role="status"></p>
   <p class="hint">The key is stored only in this browser. The free quota allows about 100 searches a day.</p>
 </section>
 
@@ -186,6 +191,8 @@
 <script>
 // Pure helpers with no DOM access, so test/helpers.test.js can run them in Node.
 const SEARCH_ENDPOINT = 'https://www.googleapis.com/youtube/v3/search';
+// Looking up one video costs 1 quota unit (a search costs 100), so it is a cheap way to test a key.
+const KEY_CHECK_URL = 'https://www.googleapis.com/youtube/v3/videos?part=id&id=aqz-KE-bpKQ';
 const MAX_RECENT = 12;
 
 // Returns the video ID if the text is a YouTube link or a bare ID, otherwise null.
@@ -243,6 +250,27 @@ function thumbUrl(id) {
   return `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
 }
 
+// Touch keyboards add spaces and swap in look-alike dashes; API keys contain neither.
+function cleanKey(text) {
+  return text.replace(/\s+/g, '').replace(/[‐-―−]/g, '-');
+}
+
+// Google API keys are 39 characters and start with "AIza". Returns what is off about
+// the text, or '' when it has the right shape (which does not mean it is the right key).
+function keyShapeHint(key) {
+  if (/^AIza[\w-]{35}$/.test(key)) return '';
+  const problems = [];
+  if (key.length !== 39) problems.push(`it has ${key.length} characters instead of 39`);
+  if (!key.startsWith('AIza')) problems.push('it does not start with AIza (capital A, capital I, small z, small a)');
+  if (/[^\w-]/.test(key)) problems.push('it contains a character that keys never use');
+  return `This does not look like a Google API key: ${problems.join(', and ')}.`;
+}
+
+// True when the API says the key itself is unknown, as opposed to restricted or out of quota.
+function isInvalidKeyError(data) {
+  return /API key not valid/i.test(String((data && data.error && data.error.message) || ''));
+}
+
 // Turns a failed API response into a sentence the user can act on.
 function describeApiError(status, data) {
   const error = (data && data.error) || {};
@@ -251,7 +279,7 @@ function describeApiError(status, data) {
   if (/quota/i.test(reason) || /quota/i.test(message)) {
     return "Today's free search quota is used up. It resets at midnight Pacific time. Pasting a video link still works.";
   }
-  if (/API key not valid/i.test(message)) return 'YouTube rejected the API key. Check it in Settings.';
+  if (isInvalidKeyError(data)) return 'YouTube rejected the API key. Check it in Settings.';
   if (/referr?er/i.test(message)) {
     return "This API key is restricted to another website. Add this site's address to the key's allowed websites in Google Cloud.";
   }
@@ -308,7 +336,7 @@ let wakeLock = null, resumeTimer = null, searchSeq = 0;
 // One-time setup shortcut: open the page as .../#key=YOUR_KEY and the key is saved.
 const hashKey = new URLSearchParams(location.hash.slice(1)).get('key');
 if (hashKey) {
-  apiKey = hashKey.trim();
+  apiKey = cleanKey(hashKey);
   store.set('cartube.apiKey', apiKey);
   history.replaceState(null, '', location.pathname + location.search);
 }
@@ -571,22 +599,52 @@ keepEl.addEventListener('change', () => store.set('cartube.keepPlaying', keepEl.
 function setSettingsOpen(open) {
   settingsEl.hidden = !open;
   settingsBtn.setAttribute('aria-expanded', String(open));
+  if (open) checkKey();
 }
 
+// Shows the saved key in groups of five so it can be compared with the one in Google Cloud.
 function showKeyStatus() {
-  $('key-status').textContent = apiKey ? `A key is saved (ends in ${apiKey.slice(-4)}).` : 'No key saved yet.';
+  $('key-status').textContent = apiKey ? `Saved key (${apiKey.length} characters):` : 'No key saved yet.';
+  $('key-saved').textContent = apiKey ? apiKey.match(/.{1,5}/g).join(' ') : '';
+  $('key-saved').hidden = !apiKey;
+  $('key-check').textContent = '';
+}
+
+// Asks YouTube whether the saved key works and says what to fix if it does not.
+async function checkKey() {
+  const checkEl = $('key-check');
+  const key = apiKey;
+  if (!key) return;
+  checkEl.textContent = 'Checking the key with YouTube...';
+  let message;
+  try {
+    const response = await fetch(KEY_CHECK_URL, { headers: { 'X-Goog-Api-Key': key } });
+    if (response.ok) {
+      message = 'YouTube accepted this key. Search is ready.';
+    } else {
+      const data = await response.json().catch(() => null);
+      message = isInvalidKeyError(data)
+        ? 'YouTube does not recognise this key. ' + (keyShapeHint(key) || 'It has the right length and start, so a character is probably mistyped. Keys are case-sensitive: check 0 against O, and 1 against l and I.')
+        : describeApiError(response.status, data);
+    }
+  } catch {
+    message = 'Could not reach YouTube to check the key.';
+  }
+  if (key === apiKey) checkEl.textContent = message;   // ignore the answer if the key changed meanwhile
 }
 
 settingsBtn.addEventListener('click', () => setSettingsOpen(settingsEl.hidden));
 
 $('key-form').addEventListener('submit', event => {
   event.preventDefault();
-  const value = $('key-input').value.trim();
+  const value = cleanKey($('key-input').value);
   if (!value) return;
   apiKey = value;
   store.set('cartube.apiKey', apiKey);
   $('key-input').value = '';
+  $('key-input').blur();   // dismisses the on-screen keyboard
   showKeyStatus();
+  checkKey();
 });
 
 $('key-remove').addEventListener('click', () => {

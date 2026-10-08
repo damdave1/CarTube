@@ -12,6 +12,9 @@ vm.runInContext(scripts[0], ctx);
 scripts.forEach((code, index) => new vm.Script(code, { filename: `inline-script-${index}` }));   // syntax check only
 
 const { parseVideoId, looksLikeLink, buildSearchUrl, decodeEntities, mapSearchItems, describeApiError, addRecent } = ctx;
+const { cleanKey, keyShapeHint, isInvalidKeyError } = ctx;
+// Built at run time so no key-shaped literal sits in the repository.
+const shapedKey = 'AIza' + 'x'.repeat(35);
 const plain = value => JSON.parse(JSON.stringify(value));   // drops the vm realm so deepEqual compares values
 
 const tests = {
@@ -79,6 +82,25 @@ const tests = {
     assert.match(describeApiError(403, disabled), /not enabled/);
     assert.equal(describeApiError(500, { error: { message: 'Backend <b>Error</b>' } }), 'YouTube search failed (HTTP 500): Backend Error');
     assert.equal(describeApiError(502, null), 'YouTube search failed (HTTP 502).');
+  },
+  'cleanKey removes what a touch keyboard adds'() {
+    assert.equal(cleanKey('  AIza Sy-ab_c \n'), 'AIzaSy-ab_c');
+    assert.equal(cleanKey('ab–cd—ef−gh'), 'ab-cd-ef-gh');
+    assert.equal(cleanKey(shapedKey), shapedKey);
+  },
+  'keyShapeHint says what is off about a mistyped key'() {
+    assert.equal(keyShapeHint(shapedKey), '');
+    assert.equal(keyShapeHint('AIza' + 'x_-9Z'.repeat(7)), '');
+    assert.match(keyShapeHint(shapedKey.slice(0, 38)), /it has 38 characters instead of 39\.$/);
+    assert.match(keyShapeHint('Alza' + 'x'.repeat(35)), /does not start with AIza/);
+    assert.match(keyShapeHint('aiza' + 'x'.repeat(35)), /does not start with AIza/);
+    assert.match(keyShapeHint('AIza' + 'x'.repeat(34) + '!'), /a character that keys never use/);
+    assert.match(keyShapeHint('nope'), /4 characters instead of 39, and it does not start with AIza/);
+  },
+  'isInvalidKeyError separates a wrong key from a restricted one'() {
+    assert.equal(isInvalidKeyError({ error: { message: 'API key not valid. Please pass a valid API key.' } }), true);
+    assert.equal(isInvalidKeyError({ error: { message: 'Requests from referer https://example.com/ are blocked.' } }), false);
+    assert.equal(isInvalidKeyError(null), false);
   },
   'addRecent puts the newest first, without duplicates, capped at 12'() {
     const list = Array.from({ length: 12 }, (_, i) => ({ id: 'id' + i }));
