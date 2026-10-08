@@ -19,7 +19,7 @@ Search uses YouTube's official Data API, which needs an API key from your own Go
 1. Open [YouTube Data API v3](https://console.cloud.google.com/apis/library/youtube.googleapis.com) in Google Cloud, create a project if asked, and choose **Enable**.
 2. Under **Credentials**, choose **Create credentials**, then **API key**.
 3. Restrict the key. Application restrictions: **Websites**, and add the address the page is hosted at (the Settings panel shows the exact value). API restrictions: **YouTube Data API v3**.
-4. Open **Settings** on the page, paste the key and save. The page checks the key with YouTube straight away (this costs 1 quota unit) and says whether it works. If it was mistyped, Settings says what looks wrong and shows the saved key in groups of five to compare against Google Cloud.
+4. Open **Settings** on the page, paste the key and save. The page checks the key with YouTube straight away (this costs 1 quota unit) and says whether it works. If it was mistyped, Settings says what looks wrong and shows the saved key in colour-coded groups of five to compare against Google Cloud. The key stays in the text box, so a single wrong character can be corrected and saved again.
 
 The key is stored in that browser's local storage and is sent only to `googleapis.com`. It is never in this repository. To avoid typing it on a touch screen you can open the page once as `https://your-site/#key=YOUR_KEY`; the page saves the key and removes it from the address.
 

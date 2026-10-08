@@ -55,6 +55,8 @@
     #key-form { display: flex; flex-wrap: wrap; gap: 12px; }
     /* A monospace face keeps 0/O and 1/l/I apart when checking a typed key. */
     #key-input, #key-saved { font-family: ui-monospace, Consolas, "Courier New", monospace; letter-spacing: 0.5px; }
+    /* Wide enough to show all 39 characters, so one of them can be tapped and corrected. */
+    #key-input { flex: 1 1 560px; font-size: 20px; }
     #key-saved { display: inline-block; margin: 8px 2px 0; padding: 6px 10px; font-size: 22px; line-height: 1.6; }
     /* Each kind of character has its own colour, so 0/O, 1/l/I and c/C differ in any font. */
     .key-group { display: inline-block; margin-right: 0.7em; white-space: nowrap; }
@@ -148,7 +150,7 @@
     <li>Under <strong>Credentials</strong>, choose <strong>Create credentials</strong>, then <strong>API key</strong>.</li>
     <li>Restrict the key. Application restrictions: <strong>Websites</strong>, and add <code id="site-pattern"></code>.
         API restrictions: <strong>YouTube Data API v3</strong>.</li>
-    <li>Paste the key here and save.</li>
+    <li>Type or paste the key here and save. To fix a typo, change that character in the box and save again.</li>
   </ol>
   <form id="key-form">
     <input id="key-input" type="text" placeholder="API key" aria-label="API key"
@@ -621,8 +623,10 @@ function setSettingsOpen(open) {
   if (open) checkKey();
 }
 
-// Shows the saved key in groups of five so it can be compared with the one in Google Cloud.
+// Shows the saved key in groups of five so it can be compared with the one in Google Cloud,
+// and leaves it in the text box so a single wrong character can be corrected and saved again.
 function showKeyStatus() {
+  $('key-input').value = apiKey;
   $('key-status').textContent = apiKey ? `Saved key (${apiKey.length} characters):` : 'No key saved yet.';
   $('key-saved').replaceChildren(...(apiKey.match(/.{1,5}/g) || []).map(group => {
     const groupEl = document.createElement('span');
@@ -671,7 +675,6 @@ $('key-form').addEventListener('submit', event => {
   if (!value) return;
   apiKey = value;
   store.set('cartube.apiKey', apiKey);
-  $('key-input').value = '';
   $('key-input').blur();   // dismisses the on-screen keyboard
   showKeyStatus();
   checkKey();
