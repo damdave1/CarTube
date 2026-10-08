@@ -573,16 +573,17 @@ function onPlayerReady() {
   else if (current) player.cueVideoById(current.id);
   pendingId = null;
   // Apply the volume chosen on this page before; otherwise show what the player already has.
+  // The player often cannot report its volume at this instant, so ask again shortly after.
   if (volumeChosen) player.setVolume(volume);
-  else volume = Math.round(player.getVolume());
-  muted = player.isMuted();
-  showVolume();
+  syncVolumeFromPlayer();
+  setTimeout(syncVolumeFromPlayer, 1500);
 }
 
 function onPlayerStateChange(event) {
   const state = YT.PlayerState;
   if (event.data === state.PLAYING) {
     fillInTitle();
+    syncVolumeFromPlayer();
     setWantPlaying(true);
   } else if (event.data === state.PAUSED) {
     // With Keep playing on, only the Pause button on this page counts as the user pausing.
@@ -661,7 +662,17 @@ function showVolume() {
   $('mute-btn').setAttribute('aria-pressed', String(muted));
 }
 
+// Copies the player's own volume and mute state into the page, skipping values it cannot report yet.
+function syncVolumeFromPlayer() {
+  if (!playerReady || Date.now() - volumeTouchedAt < 1000) return;
+  const reported = player.getVolume();
+  if (!volumeChosen && Number.isFinite(reported)) volume = Math.round(reported);
+  if (typeof player.isMuted() === 'boolean') muted = player.isMuted();
+  showVolume();
+}
+
 function setVolume(value) {
+  if (!Number.isFinite(value)) return;
   volume = Math.max(0, Math.min(100, Math.round(value)));
   muted = false;   // changing the level also unmutes
   volumeTouchedAt = Date.now();
@@ -677,7 +688,7 @@ function onPlayerVolumeChange(event) {
   // Late echoes of the page's own changes would make the slider jump back while it is dragged.
   if (Date.now() - volumeTouchedAt < 1000) return;
   const data = event.data || {};
-  if (typeof data.volume === 'number') volume = Math.round(data.volume);
+  if (Number.isFinite(data.volume)) volume = Math.round(data.volume);
   if (typeof data.muted === 'boolean') muted = data.muted;
   showVolume();
 }
