@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CarTube</title>
+  <link rel="icon" type="image/webp" href="logo.webp">
   <style>
     :root {
       color-scheme: dark;
@@ -69,10 +70,14 @@
     }
     #player-wrap::before { content: ""; display: block; padding-top: 56.25%; }
     #player-wrap iframe, #player, #placeholder { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+    /* Covers the player with the logo whenever nothing is playing. */
     #placeholder {
-      display: flex; align-items: center; justify-content: center; padding: 24px;
-      text-align: center; color: var(--dim); background: var(--panel);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+      padding: 14px; text-align: center; color: var(--dim); background: var(--panel);
     }
+    #placeholder img { flex: 0 1 auto; min-height: 0; height: 80%; border-radius: 50%; }
+    #placeholder p { margin: 0; }
+    #placeholder p:empty { display: none; }
     #controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 12px; }
     #play-btn { min-width: 120px; }
     #now-playing { flex: 1 1 240px; min-width: 0; }
@@ -139,7 +144,10 @@
   <section id="stage">
     <div id="player-wrap">
       <div id="player"></div>
-      <div id="placeholder">Search for something or paste a YouTube link to start.</div>
+      <div id="placeholder">
+        <img src="logo.webp" alt="Hendersonville Tesla Owners Association">
+        <p id="placeholder-text"></p>
+      </div>
     </div>
     <div id="controls">
       <button type="button" id="play-btn" class="primary" disabled>Play</button>
@@ -283,6 +291,7 @@ let queue = [];               // the list the current video was started from, fo
 let queueIndex = -1;
 let current = recent[0] || null;
 let wantPlaying = false;      // what the user asked for, as opposed to what the player is doing
+let idle = true;              // nothing started yet, or the last video finished: the logo covers the player
 let player = null, playerReady = false, pendingId = null;
 let wakeLock = null, resumeTimer = null, searchSeq = 0;
 
@@ -387,9 +396,15 @@ $('tab-recent').addEventListener('click', () => showList('recent'));
 function showNowPlaying() {
   $('now-title').textContent = current ? current.title : '';
   $('now-channel').textContent = current ? current.channel : '';
-  $('placeholder').hidden = Boolean(current);
+  $('placeholder').hidden = !idle;
+  $('placeholder-text').textContent = current ? 'Tap to play' : 'Search for something or paste a YouTube link to start.';
   playBtn.disabled = !current;
 }
+
+// The logo covers YouTube's own play button, so tapping it starts the loaded video.
+$('placeholder').addEventListener('click', () => {
+  if (current && !wantPlaying) playBtn.click();
+});
 
 function remember(video) {
   recent = addRecent(recent, { id: video.id, title: video.title, channel: video.channel });
@@ -403,7 +418,7 @@ function play(video, list, index) {
   playerMsgEl.textContent = '';
   remember(video);
   showNowPlaying();
-  renderList();
+  showList(view);   // also clears a stale "nothing played yet" or error line
   setWantPlaying(true);
   if (playerReady) player.loadVideoById(video.id);
   else pendingId = video.id;   // starts as soon as the player has loaded
@@ -411,11 +426,19 @@ function play(video, list, index) {
 
 function playNext() {
   if (queueIndex + 1 < queue.length) play(queue[queueIndex + 1], queue, queueIndex + 1);
-  else setWantPlaying(false);
+  else {
+    setWantPlaying(false);
+    idle = true;
+    showNowPlaying();
+  }
 }
 
 function setWantPlaying(value) {
   wantPlaying = value;
+  if (value && idle) {
+    idle = false;
+    showNowPlaying();
+  }
   playBtn.textContent = value ? 'Pause' : 'Play';
   if (value) grabWakeLock();
   else releaseWakeLock();

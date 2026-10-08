@@ -10,7 +10,7 @@ A single-page YouTube player for an in-car browser: one box to search YouTube or
 - **Recent:** the last 12 videos played on this device.
 - **Keep playing:** when on, playback resumes by itself if something pauses it, and the Pause button on the page is the way to stop. When off, pausing in the YouTube player works as usual.
 
-When a video ends, the next one in the list starts.
+When a video ends, the next one in the list starts. When nothing is playing, the player shows `logo.webp` (also the browser tab icon); tap it to start the loaded video. Replace that file to change the logo.
 
 ## Search setup
 
