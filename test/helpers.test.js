@@ -12,7 +12,7 @@ vm.runInContext(scripts[0], ctx);
 scripts.forEach((code, index) => new vm.Script(code, { filename: `inline-script-${index}` }));   // syntax check only
 
 const { parseVideoId, looksLikeLink, buildSearchUrl, decodeEntities, mapSearchItems, describeApiError, addRecent } = ctx;
-const { cleanKey, keyShapeHint, isInvalidKeyError } = ctx;
+const { cleanKey, keyShapeHint, isInvalidKeyError, charKind } = ctx;
 // Built at run time so no key-shaped literal sits in the repository.
 const shapedKey = 'AIza' + 'x'.repeat(35);
 const plain = value => JSON.parse(JSON.stringify(value));   // drops the vm realm so deepEqual compares values
@@ -96,6 +96,9 @@ const tests = {
     assert.match(keyShapeHint('aiza' + 'x'.repeat(35)), /does not start with AIza/);
     assert.match(keyShapeHint('AIza' + 'x'.repeat(34) + '!'), /a character that keys never use/);
     assert.match(keyShapeHint('nope'), /4 characters instead of 39, and it does not start with AIza/);
+  },
+  'charKind tells look-alike characters apart'() {
+    assert.deepEqual([...'0O1lI-_cC'].map(charKind), ['digit', 'upper', 'digit', 'lower', 'upper', 'other', 'other', 'lower', 'upper']);
   },
   'isInvalidKeyError separates a wrong key from a restricted one'() {
     assert.equal(isInvalidKeyError({ error: { message: 'API key not valid. Please pass a valid API key.' } }), true);

@@ -55,7 +55,14 @@
     #key-form { display: flex; flex-wrap: wrap; gap: 12px; }
     /* A monospace face keeps 0/O and 1/l/I apart when checking a typed key. */
     #key-input, #key-saved { font-family: ui-monospace, Consolas, "Courier New", monospace; letter-spacing: 0.5px; }
-    #key-saved { display: inline-block; margin: 8px 2px 0; padding: 6px 10px; font-size: 20px; word-break: break-all; }
+    #key-saved { display: inline-block; margin: 8px 2px 0; padding: 6px 10px; font-size: 22px; line-height: 1.6; }
+    /* Each kind of character has its own colour, so 0/O, 1/l/I and c/C differ in any font. */
+    .key-group { display: inline-block; margin-right: 0.7em; white-space: nowrap; }
+    .key-upper { color: #ffffff; font-weight: 700; }
+    .key-lower { color: #ffb454; }
+    .key-digit { color: #5cc8ff; }
+    .key-other { color: #ff6e9c; }
+    #key-legend { margin: 6px 2px 0; font-size: 15px; color: var(--dim); }
     code { padding: 1px 6px; border-radius: 4px; background: var(--raised); }
 
     main { flex: 1; display: grid; gap: 16px; padding: 16px; grid-template-columns: minmax(0, 1fr); }
@@ -151,6 +158,10 @@
   </form>
   <p class="msg" id="key-status" role="status"></p>
   <code id="key-saved" hidden></code>
+  <p id="key-legend" hidden>
+    <span class="key-upper">CAPITALS white</span>, <span class="key-lower">small letters orange</span>,
+    <span class="key-digit">digits blue</span>, <span class="key-other">dash and underscore pink</span>.
+  </p>
   <p class="msg" id="key-check" role="status"></p>
   <p class="hint">The key is stored only in this browser. The free quota allows about 100 searches a day.</p>
 </section>
@@ -266,6 +277,14 @@ function keyShapeHint(key) {
   return `This does not look like a Google API key: ${problems.join(', and ')}.`;
 }
 
+// Which colour class a key character gets when the saved key is shown.
+function charKind(ch) {
+  if (/[0-9]/.test(ch)) return 'digit';
+  if (/[A-Z]/.test(ch)) return 'upper';
+  if (/[a-z]/.test(ch)) return 'lower';
+  return 'other';
+}
+
 // True when the API says the key itself is unknown, as opposed to restricted or out of quota.
 function isInvalidKeyError(data) {
   return /API key not valid/i.test(String((data && data.error && data.error.message) || ''));
@@ -321,7 +340,7 @@ function loadRecent() {
     .map(item => ({ id: item.id, title: String(item.title || 'Untitled'), channel: String(item.channel || '') }));
 }
 
-let apiKey = String(store.get('cartube.apiKey', '') || '');
+let apiKey = cleanKey(String(store.get('cartube.apiKey', '') || ''));
 let recent = loadRecent();
 let results = [];
 let view = 'recent';          // which list is on screen: 'results' or 'recent'
@@ -605,8 +624,19 @@ function setSettingsOpen(open) {
 // Shows the saved key in groups of five so it can be compared with the one in Google Cloud.
 function showKeyStatus() {
   $('key-status').textContent = apiKey ? `Saved key (${apiKey.length} characters):` : 'No key saved yet.';
-  $('key-saved').textContent = apiKey ? apiKey.match(/.{1,5}/g).join(' ') : '';
+  $('key-saved').replaceChildren(...(apiKey.match(/.{1,5}/g) || []).map(group => {
+    const groupEl = document.createElement('span');
+    groupEl.className = 'key-group';
+    for (const ch of group) {
+      const charEl = document.createElement('span');
+      charEl.className = 'key-' + charKind(ch);
+      charEl.textContent = ch;
+      groupEl.append(charEl);
+    }
+    return groupEl;
+  }));
   $('key-saved').hidden = !apiKey;
+  $('key-legend').hidden = !apiKey;
   $('key-check').textContent = '';
 }
 
